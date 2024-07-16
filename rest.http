@@ -1,0 +1,49 @@
+# Home
+curl http://myesp.local
+
+# Scan
+curl http://myesp.local/scan
+
+# Connect
+curl -X POST http://myesp.local/connect -d "ssid=home_wifi&password=home_wifi_123"
+
+# Status
+curl http://myesp.local/status
+
+# Config
+curl -X POST http://myesp.local/config -H "Content-Type: application/json" -d '{
+  "devices": [
+    {
+      "components": [
+        {
+          "componentName": "sensor_led_touch_1",
+          "componentType": "digital",
+          "componentPin": 4,
+          "actionType": "digital",
+          "actionPin": 5,
+          "behaviors": ["toggle"],
+          "schedule": {
+            "startTime": {
+              "hour": 8,
+              "minute": 30
+            },
+            "endTime": {
+              "hour": 17,
+              "minute": 45
+            }
+          }
+        }
+      ]
+    }
+  ]
+}'
+
+
+
+# Control
+curl -X POST http://myesp.local/control -H "Content-Type: application/json" -d '{
+  "name": "sensor_led_touch",
+  "index": "0",
+  "state": true
+}'
+
