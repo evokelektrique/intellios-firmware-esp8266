@@ -17,12 +17,13 @@ WiFiManager wifiManager;
 Scheduler runner;  // Define the Scheduler
 
 // Define the tasks and assign them to the scheduler
-Task taskReadSensors(
-    10, TASK_FOREVER, []() { deviceManager.readSensorsAndHandleBehaviors(); },
-    &runner, true);
-
 Task taskReconnectWiFi(
     5000, TASK_FOREVER, []() { wifiManager.reconnectWiFi(); }, &runner);
+
+// Define the task to evaluate conditions
+Task taskEvaluateConditions(
+    100, TASK_FOREVER, []() { deviceManager.evaluateConditions(); }, &runner,
+    true);
 
 void setup() {
     Serial.begin(9600);
@@ -34,14 +35,15 @@ void setup() {
     }
 
     deviceManager.loadConfig();
-    deviceManager.configureDevices();
-    deviceManager.populateFunctionPointers();
-
+    deviceManager.configureComponents();
 
     wifiManager.startAPMode();
     wifiManager.begin();
 
-    MDNS.begin("myesp");
+    if (MDNS.begin("myesp")) {
+        Serial.println("MDNS responder started");
+    }
+
     Serial.println("Address: http://myesp.local");
 
     // Wifi Manager Routes
@@ -56,8 +58,8 @@ void setup() {
               []() { deviceManager.handleConfig(&server); });
     server.on("/control", HTTP_POST,
               []() { deviceManager.handleControl(&server); });
-    server.on("/devices", HTTP_GET,
-              []() { deviceManager.handleGetDevices(&server); });
+    server.on("/components", HTTP_GET,
+              []() { deviceManager.handleGetComponents(&server); });
 
     server.begin();
     Serial.println("HTTP server started");
