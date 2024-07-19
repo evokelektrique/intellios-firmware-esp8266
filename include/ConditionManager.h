@@ -11,6 +11,7 @@ struct Condition {
     std::function<bool()> conditionFunc;
     std::function<void()> actionFunc;
     unsigned long lastEvaluationTime;
+    unsigned long lastActionTime;
     unsigned long waitTime;
     bool waitActive;
     bool checkPrevious;
@@ -37,6 +38,13 @@ class ConditionManager {
 
     Condition parseCondition(const String& conditionStr);
     std::vector<String> tokenize(const String& condition);
+    void initializeCondition(Condition& cond);
+    bool parseIfCondition(const std::vector<String>& tokens, int& tokenIndex,
+                          Condition& cond);
+    bool parseWaitCondition(const std::vector<String>& tokens, int& tokenIndex,
+                            Condition& cond);
+    bool parseThenCondition(const std::vector<String>& tokens, int& tokenIndex,
+                            Condition& cond);
     bool evaluateCondition(Condition& cond);
     void executeAction(const Condition& cond);
     bool stateChanged(bool currentState, bool& previousState);
@@ -52,8 +60,7 @@ class ConditionManager {
     void writeAnalog(int pin, int value);
     int getPinNumber(const String& pinName);
 
-    unsigned long lastEvalTime;
-    const unsigned long cooldown = 10;  // Cooldown period in milliseconds
+    const unsigned long cooldown = 1000;  // Set cooldown period in milliseconds
 };
 
 #endif  // CONDITIONMANAGER_H

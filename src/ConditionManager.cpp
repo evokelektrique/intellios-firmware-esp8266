@@ -1,7 +1,6 @@
 #include "ConditionManager.h"
 
-// Constructor to initialize lastEvalTime
-ConditionManager::ConditionManager() : lastEvalTime(0) {}
+ConditionManager::ConditionManager() {}
 
 // Tokenize the condition string
 std::vector<String> ConditionManager::tokenize(const String& condition) {
@@ -10,12 +9,17 @@ std::vector<String> ConditionManager::tokenize(const String& condition) {
     int end = condition.indexOf(' ');
 
     while (end != -1) {
-        tokens.push_back(condition.substring(start, end));
+        if (end > start) {
+            tokens.push_back(condition.substring(start, end));
+        }
         start = end + 1;
         end = condition.indexOf(' ', start);
     }
 
-    tokens.push_back(condition.substring(start));
+    if (start < condition.length()) {
+        tokens.push_back(condition.substring(start));
+    }
+
     return tokens;
 }
 
@@ -29,8 +33,13 @@ ConditionManager::getComparisonMap() {
 
 // Helper function to toggle a digital pin
 void ConditionManager::toggleDigital(int pin) {
-    int currentState = digitalRead(pin);
-    digitalWrite(pin, !currentState);
+    if (pin == -1) {
+        Serial.println("Error: Invalid pin in toggleDigital");
+        return;
+    }
+    Serial.print("Toggling pin: ");
+    Serial.println(pin);
+    digitalWrite(pin, !digitalRead(pin));
 }
 
 // Add condition to the list
@@ -43,118 +52,253 @@ void ConditionManager::clearConditions() { conditions.clear(); }
 
 // Helper function to get the pin number from the pin name
 int ConditionManager::getPinNumber(const String& pinName) {
-    static std::map<String, int> pinMap = {
-        {"D0", 16}, {"D1", 5},  {"D2", 4},  {"D3", 0}, {"D4", 2}, {"D5", 14},
-        {"D6", 12}, {"D7", 13}, {"D8", 15}, {"D9", 3}, {"D10", 1}};
-    auto it = pinMap.find(pinName);
-    if (it != pinMap.end()) {
-        return it->second;
+    int pinNumber = -1;
+    if (pinName.startsWith("D")) {
+        int pinIndex = pinName.substring(1).toInt();
+        switch (pinIndex) {
+            case 0:
+                pinNumber = D0;
+                break;
+            case 1:
+                pinNumber = D1;
+                break;
+            case 2:
+                pinNumber = D2;
+                break;
+            case 3:
+                pinNumber = D3;
+                break;
+            case 4:
+                pinNumber = D4;
+                break;
+            case 5:
+                pinNumber = D5;
+                break;
+            case 6:
+                pinNumber = D6;
+                break;
+            case 7:
+                pinNumber = D7;
+                break;
+            case 8:
+                pinNumber = D8;
+                break;
+            default:
+                pinNumber = -1;
+                break;
+        }
     }
-    return -1;  // Return -1 if the pin name is invalid
+    Serial.print("Pin Name: ");
+    Serial.print(pinName);
+    Serial.print(" -> Pin Number: ");
+    Serial.println(pinNumber);
+    return pinNumber;
 }
 
-// Parse and create condition and action functions
+// Initialize the condition struct
+void ConditionManager::initializeCondition(Condition& cond) {
+    cond.checkPrevious = false;
+    cond.waitActive = false;
+    cond.hasSchedule = false;
+    cond.previousState = false;  // Initialize the previous state
+    cond.lastEvaluationTime = 0;
+    cond.lastActionTime = 0;  // Initialize lastActionTime
+}
+
 Condition ConditionManager::parseCondition(const String& conditionStr) {
     Serial.print("Parsing condition: ");
     Serial.println(conditionStr);
 
     std::vector<String> tokens = tokenize(conditionStr);
     Condition cond;
-    cond.checkPrevious = false;
-    cond.waitActive = false;
-    cond.hasSchedule = false;
-    cond.previousState = false;  // Initialize the previous state
-    int i = 0;
+    initializeCondition(cond);
+    int tokenIndex = 0;
 
-    // Initialize the comparison map
-    auto comparisonMap = getComparisonMap();
-
-    // Parse the 'if' part
-    if (tokens[i] == "if") {
-        String sensor = tokens[i + 1];
-        String pinName = tokens[i + 2];
-        String operator_ = tokens[i + 3];
-        String value = tokens[i + 4];
-
-        Serial.print("Sensor: ");
-        Serial.println(sensor);
-        Serial.print("Pin: ");
-        Serial.println(pinName);
-        Serial.print("Operator: ");
-        Serial.println(operator_);
-        Serial.print("Value: ");
-        Serial.println(value);
-
-        int pin = getPinNumber(pinName);
-
-        if (sensor == "readDigital" && pin != -1) {
-            cond.conditionFunc = [pin, operator_, value, comparisonMap]() {
-                int sensorValue = digitalRead(pin);
-                bool result = comparisonMap.at(operator_)(
-                    sensorValue, value == "on" ? HIGH : LOW);
-                return result;
-            };
-            cond.checkPreviousStateFunc = [this, pin, &cond]() {
-                bool currentState = digitalRead(pin) == HIGH;
-                return stateChanged(currentState, cond.previousState);
-            };
-        }
-        i += 5;
+    if (tokens.size() == 0) {
+        Serial.println("Error: Empty condition string.");
+        return cond;
     }
 
-    // Check if previous state checking is required
-    if (tokens[i] == "check_previous") {
-        cond.checkPrevious = true;
-        i++;
-    }
-
-    // Parse the 'then' part
-    if (tokens[i] == "then") {
-        String action = tokens[i + 1];
-        String actionPinName =
-            tokens[i + 3];  // Extract the correct token for the pin name
-        int actionPin = getPinNumber(actionPinName);
-
-        Serial.print("Action: ");
-        Serial.println(action);
-        Serial.print("Action pin: ");
-        Serial.println(actionPinName);
-
-        if (action == "toggle" && actionPin != -1) {
-            cond.actionFunc = [this, actionPin]() { toggleDigital(actionPin); };
+    if (tokens[tokenIndex] == "if") {
+        if (!parseIfCondition(tokens, tokenIndex, cond)) {
+            Serial.println("Error: Failed to parse 'if' condition.");
+            return cond;
         }
-        i += 4;  // Adjust index based on the tokens processed
+        if (tokenIndex < tokens.size() && tokens[tokenIndex] == "then") {
+            if (!parseThenCondition(tokens, tokenIndex, cond)) {
+                Serial.println("Error: Failed to parse 'then' condition.");
+            }
+        } else {
+            Serial.println("Error: Missing 'then' after 'if' condition.");
+        }
+    } else if (tokens[tokenIndex] == "wait") {
+        if (!parseWaitCondition(tokens, tokenIndex, cond)) {
+            Serial.println("Error: Failed to parse 'wait' condition.");
+            return cond;
+        }
+        if (tokenIndex < tokens.size() && tokens[tokenIndex] == "then") {
+            if (!parseThenCondition(tokens, tokenIndex, cond)) {
+                Serial.println("Error: Failed to parse 'then' condition.");
+            }
+        } else {
+            Serial.println("Error: Missing 'then' after 'wait' condition.");
+        }
+    } else if (tokens[tokenIndex] == "then") {
+        // Handle unconditional actions
+        if (!parseThenCondition(tokens, tokenIndex, cond)) {
+            Serial.println("Error: Failed to parse 'then' condition.");
+        }
+    } else {
+        Serial.print("Unknown or unsupported token: ");
+        Serial.println(tokens[tokenIndex]);
     }
 
     return cond;
 }
 
-// Evaluate conditions and execute actions
+bool ConditionManager::parseIfCondition(const std::vector<String>& tokens,
+                                        int& tokenIndex, Condition& cond) {
+    static const int IF_CONDITION_TOKENS = 5;
+    auto comparisonMap = getComparisonMap();
+
+    if (tokens.size() < tokenIndex + IF_CONDITION_TOKENS) {
+        Serial.println("Error: Incomplete 'if' condition syntax.");
+        return false;
+    }
+
+    String conditionType = tokens[tokenIndex + 1];
+    String pinName = tokens[tokenIndex + 2];
+    String comparisonOperator = tokens[tokenIndex + 3];
+    String comparisonValue = tokens[tokenIndex + 4];
+
+    Serial.print("Condition Type: ");
+    Serial.println(conditionType);
+    Serial.print("Pin Name: ");
+    Serial.println(pinName);
+    Serial.print("Comparison Operator: ");
+    Serial.println(comparisonOperator);
+    Serial.print("Comparison Value: ");
+    Serial.println(comparisonValue);
+
+    int pinNumber = getPinNumber(pinName);
+
+    if (conditionType == "readDigital" && pinNumber != -1) {
+        cond.conditionFunc = [pinNumber, comparisonOperator, comparisonValue,
+                              comparisonMap]() {
+            int sensorValue = digitalRead(pinNumber);
+            bool result = comparisonMap.at(comparisonOperator)(
+                sensorValue, comparisonValue == "on" ? HIGH : LOW);
+            return result;
+        };
+        cond.checkPreviousStateFunc = [this, pinNumber, &cond]() {
+            bool currentState = digitalRead(pinNumber) == HIGH;
+            return stateChanged(currentState, cond.previousState);
+        };
+        Serial.println(
+            "Condition function assigned successfully in parseIfCondition.");
+    } else {
+        Serial.println("Error: Unsupported condition type or invalid pin.");
+        return false;
+    }
+    tokenIndex += IF_CONDITION_TOKENS;
+    return true;
+}
+
+bool ConditionManager::parseWaitCondition(const std::vector<String>& tokens, int& tokenIndex, Condition& cond) {
+    static const int WAIT_CONDITION_TOKENS = 3;
+
+    if (tokens.size() < tokenIndex + WAIT_CONDITION_TOKENS) {
+        Serial.println("Error: Incomplete 'wait' condition syntax.");
+        return false;
+    }
+
+    String waitDurationStr = tokens[tokenIndex + 1];
+    String timeUnit = tokens[tokenIndex + 2];
+
+    unsigned long waitDuration = waitDurationStr.toInt();
+    if (timeUnit == "seconds") {
+        waitDuration *= 1000;  // Convert seconds to milliseconds
+    } else if (timeUnit == "minutes") {
+        waitDuration *= 60000;  // Convert minutes to milliseconds
+    } else {
+        Serial.println("Error: Unsupported time unit.");
+        return false;
+    }
+
+    cond.waitTime = waitDuration;
+    cond.waitActive = true;
+
+    // Assign a dummy condition function to ensure it's not null
+    cond.conditionFunc = []() { return true; };
+    Serial.println("Condition function assigned successfully in parseWaitCondition.");
+
+    Serial.print("Wait Duration: ");
+    Serial.print(waitDuration);
+    Serial.println(" ms");
+
+    tokenIndex += WAIT_CONDITION_TOKENS;
+    return true;
+}
+
+bool ConditionManager::parseThenCondition(const std::vector<String>& tokens,
+                                          int& tokenIndex, Condition& cond) {
+    static const int THEN_CONDITION_TOKENS = 4;
+
+    if (tokens.size() < tokenIndex + 3) {  // Check to ensure sufficient tokens
+        Serial.println("Error: Incomplete 'then' condition syntax.");
+        return false;
+    }
+
+    tokenIndex++;  // Skip the 'then' token
+
+    String actionType = tokens[tokenIndex];
+    String targetPinName =
+        tokens[tokenIndex + 2];  // Extract the correct token for the pin name
+
+    int targetPinNumber = getPinNumber(targetPinName);
+
+    Serial.print("Action Type: ");
+    Serial.println(actionType);
+    Serial.print("Target Pin Name: ");
+    Serial.println(targetPinName);
+    Serial.print("Target Pin Number: ");
+    Serial.println(targetPinNumber);
+
+    if (actionType == "toggle" && targetPinNumber != -1) {
+        cond.actionFunc = [this, targetPinNumber]() {
+            toggleDigital(targetPinNumber);
+        };
+        Serial.println("Action function assigned successfully.");
+    } else {
+        Serial.println("Error: Unsupported action type or invalid pin.");
+        return false;
+    }
+
+    tokenIndex +=
+        THEN_CONDITION_TOKENS;  // Adjust index based on the tokens processed
+    return true;
+}
+
 void ConditionManager::evaluateConditions() {
-    // if (millis() - lastEvalTime < cooldown) {
-    //     return;  // Skip evaluation if within cooldown period
-    // }
-    // lastEvalTime = millis();
-
-    time_t now = time(nullptr);
-
-    for (auto& cond : conditions) {
-        if (cond.waitActive) {
-            if (millis() - cond.lastEvaluationTime >= cond.waitTime) {
-                cond.waitActive = false;
-                cond.lastEvaluationTime = millis();
-                if (evaluateCondition(cond)) {
-                    Serial.println(
-                        "Condition met after wait, executing action.");
+    unsigned long currentTime = millis();
+    for (Condition& cond : conditions) {
+        if (cond.waitActive && (currentTime - cond.lastEvaluationTime >= cond.waitTime)) {
+            Serial.println("Evaluating condition after wait period.");
+            if (evaluateCondition(cond)) {
+                if (currentTime - cond.lastActionTime >= cooldown) {
                     executeAction(cond);
+                    cond.lastActionTime = currentTime;
                 }
             }
-        } else {
-            if (evaluateCondition(cond) && isWithinSchedule(cond, now)) {
-                Serial.println("Condition met, executing action.");
-                executeAction(cond);
-                cond.waitActive = true;
-                cond.lastEvaluationTime = millis();
+            cond.lastEvaluationTime = currentTime;
+            cond.waitActive = false;
+        } else if (!cond.waitActive) {
+            Serial.println("Evaluating condition without wait period.");
+            if (evaluateCondition(cond)) {
+                if (currentTime - cond.lastActionTime >= cooldown) {
+                    executeAction(cond);
+                    cond.lastActionTime = currentTime;
+                }
             }
         }
     }
@@ -162,17 +306,32 @@ void ConditionManager::evaluateConditions() {
 
 // Evaluate a single condition
 bool ConditionManager::evaluateCondition(Condition& cond) {
+    Serial.println("Evaluating condition function.");
+
+    if (!cond.conditionFunc) {
+        Serial.println("Error: No condition function assigned.");
+        return false;
+    }
+
     if (cond.checkPrevious) {
         bool currentState = cond.conditionFunc();
+        Serial.print("Current state: ");
+        Serial.println(currentState);
         bool changed = stateChanged(currentState, cond.previousState);
         if (changed) {
+            Serial.println("State changed.");
             bool result = cond.conditionFunc();
+            Serial.print("Condition result after state change: ");
+            Serial.println(result);
             return result;
         } else {
+            Serial.println("State did not change.");
             return false;
         }
     } else {
         bool result = cond.conditionFunc();
+        Serial.print("Condition result: ");
+        Serial.println(result);
         return result;
     }
 }
@@ -186,7 +345,12 @@ bool ConditionManager::stateChanged(bool currentState, bool& previousState) {
 
 // Execute the action of a condition
 void ConditionManager::executeAction(const Condition& cond) {
-    cond.actionFunc();
+    Serial.println("Executing action.");
+    if (cond.actionFunc) {
+        cond.actionFunc();
+    } else {
+        Serial.println("Error: No action function assigned.");
+    }
 }
 
 // Check if the current time is within the scheduled time

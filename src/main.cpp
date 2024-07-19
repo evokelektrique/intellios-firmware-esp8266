@@ -21,13 +21,13 @@ Task taskReconnectWiFi(
     5000, TASK_FOREVER, []() { wifiManager.reconnectWiFi(); }, &runner);
 
 // Define the task to evaluate conditions
-// Task taskEvaluateConditions(
-//     10, TASK_FOREVER, []() { deviceManager.evaluateConditions(); }, &runner,
-//     true);
+Task taskEvaluateConditions(
+    10, TASK_FOREVER, []() { deviceManager.evaluateConditions(); }, &runner,
+    true);
 
 void saveConfig() {
     // Create a JSON document and set the configuration
-    StaticJsonDocument<2048> doc;
+    JsonDocument doc;
     JsonObject component = doc.createNestedObject("components");
     JsonArray componentsArray = doc.createNestedArray("components");
 
@@ -43,6 +43,7 @@ void saveConfig() {
     JsonArray conditions = componentObj.createNestedArray("conditions");
     // conditions.add("if readDigital D2 = on check_previous then writeDigital pin D1 = on wait 5000 then writeDigital pin D1 = off");
     conditions.add("if readDigital D2 = on check_previous then toggle pin D1");
+    // conditions.add("wait 5 seconds then toggle pin D1");
 
     String jsonString;
     serializeJson(doc, jsonString);
@@ -109,11 +110,4 @@ void loop() {
     runner.execute();  // Execute scheduled tasks
     MDNS.update();
     server.handleClient();
-
-    unsigned long start = micros();
-    deviceManager.evaluateConditions();
-    unsigned long duration = micros() - start;
-    Serial.print("evaluateConditions() took ");
-    Serial.print(duration);
-    Serial.println(" microseconds");
 }
