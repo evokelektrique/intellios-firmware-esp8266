@@ -1,15 +1,15 @@
-#include <vector>
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <DeviceManagement.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <LittleFS.h>
+#include <TaskDefinitions.h>
+#include <TaskScheduler.h>
+#include <WiFiManagement.h>
 
-#include "Arduino.h"
-#include "ArduinoJson.h"
-#include "DeviceManagement.h"
-#include "ESP8266WebServer.h"
-#include "ESP8266WiFi.h"
-#include "ESP8266mDNS.h"
-#include "LittleFS.h"
-#include "TaskDefinitions.h"
-#include "TaskScheduler.h"
-#include "WiFiManagement.h"
+#include <vector>
 
 ESP8266WebServer server(80);  // Create a web server on port 80
 DeviceManager deviceManager;
@@ -21,9 +21,42 @@ Task taskReconnectWiFi(
     5000, TASK_FOREVER, []() { wifiManager.reconnectWiFi(); }, &runner);
 
 // Define the task to evaluate conditions
-Task taskEvaluateConditions(
-    100, TASK_FOREVER, []() { deviceManager.evaluateConditions(); }, &runner,
-    true);
+// Task taskEvaluateConditions(
+//     10, TASK_FOREVER, []() { deviceManager.evaluateConditions(); }, &runner,
+//     true);
+
+void saveConfig() {
+    // Create a JSON document and set the configuration
+    StaticJsonDocument<2048> doc;
+    JsonObject component = doc.createNestedObject("components");
+    JsonArray componentsArray = doc.createNestedArray("components");
+
+    JsonObject componentObj = componentsArray.createNestedObject();
+    componentObj["name"] = "ToggleComponent";
+
+    JsonArray inputPins = componentObj.createNestedArray("inputPins");
+    inputPins.add(4);  // Assuming GPIO4 is D2
+
+    JsonArray outputPins = componentObj.createNestedArray("outputPins");
+    outputPins.add(5);  // Assuming GPIO5 is D1
+
+    JsonArray conditions = componentObj.createNestedArray("conditions");
+    // conditions.add("if readDigital D2 = on check_previous then writeDigital pin D1 = on wait 5000 then writeDigital pin D1 = off");
+    conditions.add("if readDigital D2 = on check_previous then toggle pin D1");
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+
+    // Save the JSON string to /config.json
+    File configFile = LittleFS.open("/config.json", "w");
+    if (!configFile) {
+        Serial.println("Failed to open config file for writing");
+        return;
+    }
+    configFile.print(jsonString);
+    configFile.close();
+    Serial.println("Config saved to /config.json");
+}
 
 void setup() {
     Serial.begin(9600);
@@ -34,7 +67,12 @@ void setup() {
         return;
     }
 
+    // Save configuration to /config.json
+    saveConfig();
+
+    // Load configuration from /config.json
     deviceManager.loadConfig();
+
     deviceManager.configureComponents();
 
     wifiManager.startAPMode();
@@ -71,4 +109,11 @@ void loop() {
     runner.execute();  // Execute scheduled tasks
     MDNS.update();
     server.handleClient();
+
+    unsigned long start = micros();
+    deviceManager.evaluateConditions();
+    unsigned long duration = micros() - start;
+    Serial.print("evaluateConditions() took ");
+    Serial.print(duration);
+    Serial.println(" microseconds");
 }

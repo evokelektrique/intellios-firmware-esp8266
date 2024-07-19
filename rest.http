@@ -11,33 +11,44 @@ curl -X POST http://myesp.local/connect -d "ssid=home_wifi&password=home_wifi_12
 curl http://myesp.local/status
 
 # Config
+# curl -X POST http://myesp.local/config -H "Content-Type: application/json" -d '{
+#   "devices": [
+#     {
+#       "components": [
+#         {
+#           "componentName": "sensor_led_touch_1",
+#           "componentType": "digital",
+#           "componentPin": 4,
+#           "actionType": "digital",
+#           "actionPin": 5,
+#           "behaviors": ["toggle"],
+#           "schedule": {
+#             "startTime": {
+#               "hour": 8,
+#               "minute": 30
+#             },
+#             "endTime": {
+#               "hour": 17,
+#               "minute": 45
+#             }
+#           }
+#         }
+#       ]
+#     }
+#   ]
+# }'
 curl -X POST http://myesp.local/config -H "Content-Type: application/json" -d '{
-  "devices": [
+  "components": [
     {
-      "components": [
-        {
-          "componentName": "sensor_led_touch_1",
-          "componentType": "digital",
-          "componentPin": 4,
-          "actionType": "digital",
-          "actionPin": 5,
-          "behaviors": ["toggle"],
-          "schedule": {
-            "startTime": {
-              "hour": 8,
-              "minute": 30
-            },
-            "endTime": {
-              "hour": 17,
-              "minute": 45
-            }
-          }
-        }
+      "name": "ToggleComponent",
+      "inputPins": [5],
+      "outputPins": [4],
+      "conditions": [
+        "if readDigital D2 = on check_previous then toggle pin D1"
       ]
     }
   ]
 }'
-
 
 
 # Control
