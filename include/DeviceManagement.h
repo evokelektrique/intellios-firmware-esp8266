@@ -6,14 +6,14 @@
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
 
-#include "ConditionManager.h"
+#include "ScriptManager.h"
 #include "FileUtils.h"
 
 struct Component {
     String name;
     std::vector<int> inputPins;      // Input pins
     std::vector<int> outputPins;     // Output pins
-    std::vector<String> conditions;  // DSL conditions for this component
+    std::vector<String> scripts;  // DSL scripts for this component
 };
 
 class DeviceManager {
@@ -25,15 +25,15 @@ class DeviceManager {
     void handleConfig(ESP8266WebServer* server);
     void handleControl(ESP8266WebServer* server);
     void handleGetComponents(ESP8266WebServer* server);
-    void evaluateConditions();
     int readComponentState(const String& componentName,
                            int pin);  // Function to read the state of a
                                       // specific pin of a component
+    ScriptManager& getScriptManager();
 
    private:
-    ConditionManager conditionManager;
+    ScriptManager scriptManager;
     std::vector<Component> components;
-    void configureComponentConditions();
+    void configureComponentScripts();
     void setupPins();  // Function to set up pins
     Component* getComponentByName(
         const String& name);  // Helper function to get a component by name

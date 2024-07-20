@@ -5,6 +5,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <LittleFS.h>
+#include <ScriptManager.h>
 #include <TaskDefinitions.h>
 #include <TaskScheduler.h>
 #include <WiFiManagement.h>
@@ -15,20 +16,18 @@ ESP8266WebServer server(80);  // Create a web server on port 80
 DeviceManager deviceManager;
 WiFiManager wifiManager;
 Scheduler runner;  // Define the Scheduler
+ScriptManager scriptManager;
 
 // Define the tasks and assign them to the scheduler
 Task taskReconnectWiFi(
     5000, TASK_FOREVER, []() { wifiManager.reconnectWiFi(); }, &runner);
 
 // Define the task to evaluate conditions
-// Task taskEvaluateConditions(
-//     10, TASK_FOREVER, []() { deviceManager.evaluateConditions(); }, &runner,
-//     true);
+Task taskEvaluateScripts(
+    10, TASK_FOREVER, []() { scriptManager.evaluateScripts(); }, &runner, true);
 
 void saveConfig() {
-    // Create a JSON document and set the configuration
-    StaticJsonDocument<2048> doc;
-    JsonObject component = doc.createNestedObject("components");
+    StaticJsonDocument<1024> doc;  // Adjust the size as needed
     JsonArray componentsArray = doc.createNestedArray("components");
 
     JsonObject componentObj = componentsArray.createNestedObject();
@@ -41,13 +40,13 @@ void saveConfig() {
     outputPins.add(5);  // Assuming GPIO5 is D1
 
     JsonArray conditions = componentObj.createNestedArray("conditions");
-    // conditions.add("if readDigital D2 = on check_previous then writeDigital pin D1 = on wait 5000 then writeDigital pin D1 = off");
-    conditions.add("if readDigital D2 = on check_previous then toggle pin D1");
+    conditions.add(
+        "IF sensor 'readDigital' pin 'D2' operator '=' value 'HIGH' "
+        "check_previous THEN action 'toggle' pin 'D1'");
 
     String jsonString;
     serializeJson(doc, jsonString);
 
-    // Save the JSON string to /config.json
     File configFile = LittleFS.open("/config.json", "w");
     if (!configFile) {
         Serial.println("Failed to open config file for writing");
@@ -61,6 +60,23 @@ void saveConfig() {
 void setup() {
     Serial.begin(9600);
     Serial.println("Starting up...");
+
+    // DSLParser parser;
+
+    // String dsl1 =
+    //     "IF sensor 'readDigital' pin 'D2' operator '=' value 'HIGH' "
+    //     "check_previous THEN action 'toggle' pin 'D1'";
+    // String dsl2 =
+    //     "IF sensor 'readDigital' pin 'D2' operator '=' value 'HIGH' THEN "
+    //     "action 'toggle' pin 'D1' WAIT 5000";
+    // String dsl3 =
+    //     "IF sensor 'readDigital' pin 'D2' operator '=' value 'HIGH' THEN "
+    //     "action 'toggle' pin 'D1' SCHEDULE start '08:00' end '20:00' days "
+    //     "'Mon,Wed,Fri'";
+
+    // parser.parse(dsl1);
+    // parser.parse(dsl2);
+    // parser.parse(dsl3);
 
     if (!LittleFS.begin()) {
         Serial.println("LittleFS Mount Failed");
@@ -109,11 +125,5 @@ void loop() {
     runner.execute();  // Execute scheduled tasks
     MDNS.update();
     server.handleClient();
-
-    unsigned long start = micros();
-    deviceManager.evaluateConditions();
-    unsigned long duration = micros() - start;
-    Serial.print("evaluateConditions() took ");
-    Serial.print(duration);
-    Serial.println(" microseconds");
+    // delay(100);  // Add a small delay to avoid flooding the serial output
 }

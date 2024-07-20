@@ -1,7 +1,5 @@
 #include "DeviceManagement.h"
 
-#include "ConditionManager.h"
-
 DeviceManager::DeviceManager() {}
 
 void DeviceManager::loadConfig() {
@@ -12,16 +10,13 @@ void DeviceManager::loadConfig() {
     Serial.println("Config File Content:");
     Serial.println(configFile);
 
-    JsonDocument doc;  // Adjust the size if needed
+    StaticJsonDocument<2048> doc;
     DeserializationError error = deserializeJson(doc, configFile);
     if (error) {
         Serial.println("Failed to read config file");
         Serial.println(error.c_str());
         return;
     }
-
-    serializeJson(doc, Serial);
-    Serial.println();
 
     JsonArray componentsArray = doc["components"].as<JsonArray>();
     if (componentsArray.isNull()) {
@@ -42,9 +37,9 @@ void DeviceManager::loadConfig() {
             component.outputPins.push_back(pin.as<int>());
         }
 
-        for (JsonVariant condition :
-             componentJson["conditions"].as<JsonArray>()) {
-            component.conditions.push_back(condition.as<String>());
+        for (JsonVariant script :
+             componentJson["scripts"].as<JsonArray>()) {
+            component.scripts.push_back(script.as<String>());
         }
 
         components.push_back(component);
@@ -56,34 +51,34 @@ void DeviceManager::loadConfig() {
 void DeviceManager::saveConfig() {
     Serial.println("Saving config to LittleFS...");
 
-    JsonDocument doc;
-    JsonArray componentsArray = doc["components"].to<JsonArray>();
+    StaticJsonDocument<2048> doc;
+    JsonArray componentsArray = doc.createNestedArray("components");
 
     for (const auto& component : components) {
-        JsonObject componentJson = componentsArray.add<JsonObject>();
+        JsonObject componentJson = componentsArray.createNestedObject();
         componentJson["name"] = component.name;
 
-        JsonArray inputPinsArray = componentJson["inputPins"].to<JsonArray>();
+        JsonArray inputPinsArray = componentJson.createNestedArray("inputPins");
         for (int pin : component.inputPins) {
             inputPinsArray.add(pin);
         }
 
-        JsonArray outputPinsArray = componentJson["outputPins"].to<JsonArray>();
+        JsonArray outputPinsArray =
+            componentJson.createNestedArray("outputPins");
         for (int pin : component.outputPins) {
             outputPinsArray.add(pin);
         }
 
-        JsonArray conditionsArray = componentJson["conditions"].to<JsonArray>();
-        for (const auto& condition : component.conditions) {
-            conditionsArray.add(condition);
+        JsonArray scriptsArray =
+            componentJson.createNestedArray("scripts");
+        for (const auto& script : component.scripts) {
+            scriptsArray.add(script);
         }
     }
 
     String jsonString;
     serializeJson(doc, jsonString);
-
-    writeFile("/config.json",
-              jsonString.c_str());  // Convert String to const char*
+    writeFile("/config.json", jsonString.c_str());
 
     Serial.println("Config saved to LittleFS.");
 }
@@ -91,7 +86,7 @@ void DeviceManager::saveConfig() {
 void DeviceManager::configureComponents() {
     Serial.println("Configuring components...");
     setupPins();
-    configureComponentConditions();
+    configureComponentScripts();
     Serial.println("Components configured.");
 }
 
@@ -112,14 +107,14 @@ void DeviceManager::setupPins() {
     }
 }
 
-void DeviceManager::configureComponentConditions() {
+void DeviceManager::configureComponentScripts() {
     for (const auto& component : components) {
-        Serial.print("Configuring conditions for component: ");
+        Serial.print("Configuring scripts for component: ");
         Serial.println(component.name);
-        for (const auto& condition : component.conditions) {
-            Serial.print("Adding condition: ");
-            Serial.println(condition);
-            conditionManager.addCondition(condition);
+        for (const auto& script : component.scripts) {
+            Serial.print("Adding script: ");
+            Serial.println(script);
+            scriptManager.addScript(script);
         }
     }
 }
@@ -143,8 +138,8 @@ void DeviceManager::handleConfig(ESP8266WebServer* server) {
         return;
     }
 
-    components.clear();                  // Clear existing components
-    conditionManager.clearConditions();  // Clear existing conditions
+    components.clear();
+    scriptManager.clearScripts();
 
     JsonArray componentsArray = doc["components"].as<JsonArray>();
     if (componentsArray.isNull()) {
@@ -166,9 +161,9 @@ void DeviceManager::handleConfig(ESP8266WebServer* server) {
             component.outputPins.push_back(pin.as<int>());
         }
 
-        for (JsonVariant condition :
-             componentJson["conditions"].as<JsonArray>()) {
-            component.conditions.push_back(condition.as<String>());
+        for (JsonVariant script :
+             componentJson["scripts"].as<JsonArray>()) {
+            component.scripts.push_back(script.as<String>());
         }
 
         components.push_back(component);
@@ -192,7 +187,7 @@ void DeviceManager::handleControl(ESP8266WebServer* server) {
     Serial.print("Request body: ");
     Serial.println(body);
 
-    JsonDocument doc;
+    StaticJsonDocument<2048> doc;
     DeserializationError error = deserializeJson(doc, body);
     if (error) {
         server->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -203,7 +198,7 @@ void DeviceManager::handleControl(ESP8266WebServer* server) {
     String stateName = doc["stateName"];
     bool stateValue = doc["stateValue"];
 
-    conditionManager.setState(stateName, stateValue);
+    scriptManager.setState(stateName, stateValue);
 
     server->send(200, "application/json", "{\"status\":\"State updated\"}");
     Serial.println("State updated successfully.");
@@ -212,26 +207,28 @@ void DeviceManager::handleControl(ESP8266WebServer* server) {
 void DeviceManager::handleGetComponents(ESP8266WebServer* server) {
     Serial.println("Handling /components request...");
 
-    JsonDocument doc;
-    JsonArray componentsArray = doc["components"].to<JsonArray>();
+    StaticJsonDocument<2048> doc;
+    JsonArray componentsArray = doc.createNestedArray("components");
 
     for (const auto& component : components) {
-        JsonObject componentJson = componentsArray.add<JsonObject>();
+        JsonObject componentJson = componentsArray.createNestedObject();
         componentJson["name"] = component.name;
 
-        JsonArray inputPinsArray = componentJson["inputPins"].to<JsonArray>();
+        JsonArray inputPinsArray = componentJson.createNestedArray("inputPins");
         for (int pin : component.inputPins) {
             inputPinsArray.add(pin);
         }
 
-        JsonArray outputPinsArray = componentJson["outputPins"].to<JsonArray>();
+        JsonArray outputPinsArray =
+            componentJson.createNestedArray("outputPins");
         for (int pin : component.outputPins) {
             outputPinsArray.add(pin);
         }
 
-        JsonArray conditionsArray = componentJson["conditions"].to<JsonArray>();
-        for (const auto& condition : component.conditions) {
-            conditionsArray.add(condition);
+        JsonArray scriptsArray =
+            componentJson.createNestedArray("scripts");
+        for (const auto& script : component.scripts) {
+            scriptsArray.add(script);
         }
     }
 
@@ -239,10 +236,6 @@ void DeviceManager::handleGetComponents(ESP8266WebServer* server) {
     serializeJson(doc, response);
     server->send(200, "application/json", response);
     Serial.println("Component configurations and states sent.");
-}
-
-void DeviceManager::evaluateConditions() {
-    conditionManager.evaluateConditions();
 }
 
 Component* DeviceManager::getComponentByName(const String& name) {
@@ -257,21 +250,21 @@ Component* DeviceManager::getComponentByName(const String& name) {
 int DeviceManager::readComponentState(const String& componentName, int pin) {
     Component* component = getComponentByName(componentName);
     if (component) {
-        // Determine if the pin is an input pin
         auto it = std::find(component->inputPins.begin(),
                             component->inputPins.end(), pin);
         if (it != component->inputPins.end()) {
-            // Perform a digital read if it's an input pin
             return digitalRead(pin);
         }
 
-        // Determine if the pin is an output pin
         it = std::find(component->outputPins.begin(),
                        component->outputPins.end(), pin);
         if (it != component->outputPins.end()) {
-            // Perform an analog read if it's an output pin
             return analogRead(pin);
         }
     }
-    return -1;  // Invalid state if the pin is not found
+    return -1;
+}
+
+ScriptManager& DeviceManager::getScriptManager() {
+    return scriptManager;
 }
