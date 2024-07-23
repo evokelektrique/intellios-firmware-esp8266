@@ -2,10 +2,11 @@
 #define CONDITIONMANAGER_H
 
 #include <Arduino.h>
-
 #include <functional>
 #include <map>
 #include <vector>
+#include <time.h>
+#include <ArduinoJson.h>
 
 struct Condition {
     std::function<bool()> conditionFunc;
@@ -19,13 +20,13 @@ struct Condition {
     bool hasSchedule;
     time_t startTime;
     time_t endTime;
-    std::vector<int> daysOfWeek;  // 0 = Sunday, 6 = Saturday
+    std::vector<int> daysOfWeek;
 };
 
 class ConditionManager {
    public:
-    ConditionManager();  // Constructor declaration
-    void addCondition(const String& conditionStr);
+    ConditionManager();
+    void addCondition(const JsonObject& conditionJson);
     void evaluateConditions();
     void setState(const String& stateName, bool stateValue);
     bool getState(const String& stateName) const;
@@ -35,8 +36,7 @@ class ConditionManager {
     std::vector<Condition> conditions;
     std::map<String, bool> states;
 
-    Condition parseCondition(const String& conditionStr);
-    std::vector<String> tokenize(const String& condition);
+    Condition parseCondition(const JsonObject& conditionJson);
     bool evaluateCondition(Condition& cond);
     void executeAction(const Condition& cond);
     bool stateChanged(bool currentState, bool& previousState);
@@ -45,15 +45,11 @@ class ConditionManager {
 
     static std::map<String, std::function<bool(int, int)>> getComparisonMap();
 
-    // Helper functions
     void toggleDigital(int pin);
-    void pulseDigital(int pin, int duration);
-    void writeDigital(int pin, bool state);
-    void writeAnalog(int pin, int value);
     int getPinNumber(const String& pinName);
 
     unsigned long lastEvalTime;
-    const unsigned long cooldown = 10;  // Cooldown period in milliseconds
+    const unsigned long cooldown = 10;
 };
 
 #endif  // CONDITIONMANAGER_H

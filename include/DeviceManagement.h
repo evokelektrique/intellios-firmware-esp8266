@@ -11,9 +11,9 @@
 
 struct Component {
     String name;
-    std::vector<int> inputPins;      // Input pins
-    std::vector<int> outputPins;     // Output pins
-    std::vector<String> conditions;  // DSL conditions for this component
+    std::vector<int> inputPins;
+    std::vector<int> outputPins;
+    std::vector<JsonObject> conditions;
 };
 
 class DeviceManager {
@@ -26,17 +26,14 @@ class DeviceManager {
     void handleControl(ESP8266WebServer* server);
     void handleGetComponents(ESP8266WebServer* server);
     void evaluateConditions();
-    int readComponentState(const String& componentName,
-                           int pin);  // Function to read the state of a
-                                      // specific pin of a component
+    int readComponentState(const String& componentName, int pin);
 
    private:
     ConditionManager conditionManager;
     std::vector<Component> components;
     void configureComponentConditions();
-    void setupPins();  // Function to set up pins
-    Component* getComponentByName(
-        const String& name);  // Helper function to get a component by name
+    void setupPins();
+    Component* getComponentByName(const String& name);
 };
 
 extern DeviceManager deviceManager;

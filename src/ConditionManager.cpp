@@ -3,22 +3,6 @@
 // Constructor to initialize lastEvalTime
 ConditionManager::ConditionManager() : lastEvalTime(0) {}
 
-// Tokenize the condition string
-std::vector<String> ConditionManager::tokenize(const String& condition) {
-    std::vector<String> tokens;
-    int start = 0;
-    int end = condition.indexOf(' ');
-
-    while (end != -1) {
-        tokens.push_back(condition.substring(start, end));
-        start = end + 1;
-        end = condition.indexOf(' ', start);
-    }
-
-    tokens.push_back(condition.substring(start));
-    return tokens;
-}
-
 // Create a map for comparison operators
 std::map<String, std::function<bool(int, int)>>
 ConditionManager::getComparisonMap() {
@@ -34,8 +18,8 @@ void ConditionManager::toggleDigital(int pin) {
 }
 
 // Add condition to the list
-void ConditionManager::addCondition(const String& conditionStr) {
-    conditions.push_back(parseCondition(conditionStr));
+void ConditionManager::addCondition(const JsonObject& conditionJson) {
+    conditions.push_back(parseCondition(conditionJson));
 }
 
 // Clear all conditions
@@ -54,76 +38,62 @@ int ConditionManager::getPinNumber(const String& pinName) {
 }
 
 // Parse and create condition and action functions
-Condition ConditionManager::parseCondition(const String& conditionStr) {
+Condition ConditionManager::parseCondition(const JsonObject& conditionJson) {
     Serial.print("Parsing condition: ");
-    Serial.println(conditionStr);
+    serializeJson(conditionJson, Serial);
+    Serial.println();
 
-    std::vector<String> tokens = tokenize(conditionStr);
     Condition cond;
-    cond.checkPrevious = false;
+    cond.checkPrevious = conditionJson["check_previous"] | false;
     cond.waitActive = false;
     cond.hasSchedule = false;
     cond.previousState = false;  // Initialize the previous state
-    int i = 0;
 
     // Initialize the comparison map
     auto comparisonMap = getComparisonMap();
 
     // Parse the 'if' part
-    if (tokens[i] == "if") {
-        String sensor = tokens[i + 1];
-        String pinName = tokens[i + 2];
-        String operator_ = tokens[i + 3];
-        String value = tokens[i + 4];
+    String sensor = conditionJson["if"]["sensor"];
+    String pinName = conditionJson["if"]["pin"];
+    String operator_ = conditionJson["if"]["operator"];
+    String value = conditionJson["if"]["value"];
 
-        Serial.print("Sensor: ");
-        Serial.println(sensor);
-        Serial.print("Pin: ");
-        Serial.println(pinName);
-        Serial.print("Operator: ");
-        Serial.println(operator_);
-        Serial.print("Value: ");
-        Serial.println(value);
+    Serial.print("Sensor: ");
+    Serial.println(sensor);
+    Serial.print("Pin: ");
+    Serial.println(pinName);
+    Serial.print("Operator: ");
+    Serial.println(operator_);
+    Serial.print("Value: ");
+    Serial.println(value);
 
-        int pin = getPinNumber(pinName);
+    int pin = getPinNumber(pinName);
 
-        if (sensor == "readDigital" && pin != -1) {
-            cond.conditionFunc = [pin, operator_, value, comparisonMap]() {
-                int sensorValue = digitalRead(pin);
-                bool result = comparisonMap.at(operator_)(
-                    sensorValue, value == "on" ? HIGH : LOW);
-                return result;
-            };
-            cond.checkPreviousStateFunc = [this, pin, &cond]() {
-                bool currentState = digitalRead(pin) == HIGH;
-                return stateChanged(currentState, cond.previousState);
-            };
-        }
-        i += 5;
-    }
-
-    // Check if previous state checking is required
-    if (tokens[i] == "check_previous") {
-        cond.checkPrevious = true;
-        i++;
+    if (sensor == "readDigital" && pin != -1) {
+        cond.conditionFunc = [pin, operator_, value, comparisonMap]() {
+            int sensorValue = digitalRead(pin);
+            bool result = comparisonMap.at(operator_)(
+                sensorValue, value == "on" ? HIGH : LOW);
+            return result;
+        };
+        cond.checkPreviousStateFunc = [this, pin, &cond]() {
+            bool currentState = digitalRead(pin) == HIGH;
+            return stateChanged(currentState, cond.previousState);
+        };
     }
 
     // Parse the 'then' part
-    if (tokens[i] == "then") {
-        String action = tokens[i + 1];
-        String actionPinName =
-            tokens[i + 3];  // Extract the correct token for the pin name
-        int actionPin = getPinNumber(actionPinName);
+    String action = conditionJson["then"]["action"];
+    String actionPinName = conditionJson["then"]["pin"];
+    int actionPin = getPinNumber(actionPinName);
 
-        Serial.print("Action: ");
-        Serial.println(action);
-        Serial.print("Action pin: ");
-        Serial.println(actionPinName);
+    Serial.print("Action: ");
+    Serial.println(action);
+    Serial.print("Action pin: ");
+    Serial.println(actionPinName);
 
-        if (action == "toggle" && actionPin != -1) {
-            cond.actionFunc = [this, actionPin]() { toggleDigital(actionPin); };
-        }
-        i += 4;  // Adjust index based on the tokens processed
+    if (action == "toggle" && actionPin != -1) {
+        cond.actionFunc = [this, actionPin]() { toggleDigital(actionPin); };
     }
 
     return cond;
@@ -131,11 +101,6 @@ Condition ConditionManager::parseCondition(const String& conditionStr) {
 
 // Evaluate conditions and execute actions
 void ConditionManager::evaluateConditions() {
-    // if (millis() - lastEvalTime < cooldown) {
-    //     return;  // Skip evaluation if within cooldown period
-    // }
-    // lastEvalTime = millis();
-
     time_t now = time(nullptr);
 
     for (auto& cond : conditions) {
@@ -144,8 +109,7 @@ void ConditionManager::evaluateConditions() {
                 cond.waitActive = false;
                 cond.lastEvaluationTime = millis();
                 if (evaluateCondition(cond)) {
-                    Serial.println(
-                        "Condition met after wait, executing action.");
+                    Serial.println("Condition met after wait, executing action.");
                     executeAction(cond);
                 }
             }
