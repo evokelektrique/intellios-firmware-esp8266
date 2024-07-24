@@ -33,7 +33,8 @@ const char* jsonConfig = R"(
       "pins": ["pin1"],
       "state": {
         "status": false
-      }
+      },
+      "latency": 150
     },
     {
       "id": "touch_sensor",
@@ -41,13 +42,14 @@ const char* jsonConfig = R"(
       "pins": ["pin2"],
       "state": {
         "touched": false
-      }
+      },
+      "latency": 0
     }
   ],
   "rules": [
     {
-      "id": "rule1",
-      "label": "Touch Sensor to LED On",
+      "id": "rule3",
+      "label": "Touch Sensor to Toggle LED",
       "conditions": [
         {
           "device_id": "touch_sensor",
@@ -60,26 +62,8 @@ const char* jsonConfig = R"(
         {
           "device_id": "led",
           "property": "status",
+          "action_type": "toggle",
           "value": true
-        }
-      ]
-    },
-    {
-      "id": "rule2",
-      "label": "Touch Sensor to LED Off",
-      "conditions": [
-        {
-          "device_id": "touch_sensor",
-          "property": "touched",
-          "operator": "==",
-          "value": false
-        }
-      ],
-      "actions": [
-        {
-          "device_id": "led",
-          "property": "status",
-          "value": false
         }
       ]
     }
@@ -87,9 +71,28 @@ const char* jsonConfig = R"(
 }
 )";
 
-// struct Version {
-//     float number;
-// };
+class StateManager {
+   public:
+    void setState(const String& deviceId, const String& property, bool value) {
+        states[deviceId][property] = value;
+    }
+
+    bool getState(const String& deviceId, const String& property) const {
+        auto deviceIt = states.find(deviceId);
+        if (deviceIt != states.end()) {
+            auto propertyIt = deviceIt->second.find(property);
+            if (propertyIt != deviceIt->second.end()) {
+                return propertyIt->second;
+            }
+        }
+        return false;
+    }
+
+   private:
+    std::map<String, std::map<String, bool>> states;
+};
+
+StateManager stateManager;
 
 // Struct Definitions
 struct Pin {
@@ -105,6 +108,9 @@ struct Device {
     String label;
     std::vector<String> pins;
     std::map<String, JsonVariant> state;
+    unsigned long latency;
+    unsigned long lastRunTime;
+    bool previousState;
 };
 
 struct Condition {
@@ -117,6 +123,7 @@ struct Condition {
 struct Action {
     String device_id;
     String property;
+    String action_type;
     JsonVariant value;
 };
 
@@ -138,7 +145,6 @@ void evaluateAndUpdate();
 
 // TaskScheduler
 Scheduler runner;
-Task evaluateRulesTask(10, TASK_FOREVER, &evaluateAndUpdate, &runner, true);
 
 void setup() {
     Serial.begin(9600);
@@ -161,59 +167,11 @@ void setup() {
     JsonArray rulesArray = doc["rules"].as<JsonArray>();
     setupRules(rulesArray);
 
-    // Version version;
-    // version.number = doc["version"];
-
-    for (Rule& rule : rules) {
-        Serial.println("Rule Label: " + rule.label);
-
-        // Print conditions
-        Serial.println("Conditions:");
-        for (const auto& condition : rule.conditions) {
-            Serial.println("  Device ID: " + condition->device_id);
-            Serial.println("  Property: " + condition->property);
-            Serial.println("  Operator: " + condition->operatorStr);
-            Serial.print("  Value: ");
-            if (condition->value.is<bool>()) {
-                Serial.println(condition->value.as<bool>());
-            } else if (condition->value.is<int>()) {
-                Serial.println(condition->value.as<int>());
-            } else if (condition->value.is<float>()) {
-                Serial.println(condition->value.as<float>());
-            } else if (condition->value.is<const char*>()) {
-                Serial.println(condition->value.as<const char*>());
-            } else {
-                Serial.println("Unknown type");
-            }
-        }
-
-        // Print actions
-        Serial.println("Actions:");
-        for (const auto& action : rule.actions) {
-            Serial.println("  Device ID: " + action->device_id);
-            Serial.println("  Property: " + action->property);
-            Serial.print("  Value: ");
-            if (action->value.is<bool>()) {
-                Serial.println(action->value.as<bool>());
-            } else if (action->value.is<int>()) {
-                Serial.println(action->value.as<int>());
-            } else if (action->value.is<float>()) {
-                Serial.println(action->value.as<float>());
-            } else if (action->value.is<const char*>()) {
-                Serial.println(action->value.as<const char*>());
-            } else {
-                Serial.println("Unknown type");
-            }
-        }
-
-        Serial.println();
-    }
-
     runner.startNow();
 }
 
 void loop() {
-    runner.execute();
+    evaluateAndUpdate();
 }
 
 void setupPins(JsonArray& pinsArray) {
@@ -255,10 +213,15 @@ void setupDevices(JsonArray& devicesArray) {
             device.state[kv.key().c_str()] = kv.value();
         }
 
+        device.latency = deviceObject["latency"].as<unsigned long>();
+        device.lastRunTime = 0;
+        device.previousState = false;
+
         devices.push_back(device);
 
         Serial.println("Device ID: " + device.id);
         Serial.println("Label: " + device.label);
+        Serial.println("Latency: " + String(device.latency));
     }
 }
 
@@ -266,166 +229,198 @@ void setupRules(JsonArray& rulesArray) {
     for (JsonObject ruleObject : rulesArray) {
         Rule rule;
         rule.id = ruleObject["id"].as<String>();
-        Serial.println("Parsed Rule ID: " + rule.id);
-
         rule.label = ruleObject["label"].as<String>();
-        Serial.println("Parsed Rule Label: " + rule.label);
 
         JsonArray conditionsArray = ruleObject["conditions"].as<JsonArray>();
-        Serial.println("Parsed conditionsArray");
 
         for (JsonObject conditionObject : conditionsArray) {
             auto condition = std::make_unique<Condition>();
             if (conditionObject.containsKey("device_id")) {
-                condition->device_id =
-                    conditionObject["device_id"].as<String>();
-                Serial.println("  Parsed Condition Device ID: " +
-                               condition->device_id);
+                condition->device_id = conditionObject["device_id"].as<String>();
             }
             if (conditionObject.containsKey("property")) {
                 condition->property = conditionObject["property"].as<String>();
-                Serial.println("  Parsed Condition Property: " +
-                               condition->property);
             }
             if (conditionObject.containsKey("operator")) {
-                condition->operatorStr =
-                    conditionObject["operator"].as<String>();
-                Serial.println("  Parsed Condition Operator: " +
-                               condition->operatorStr);
+                condition->operatorStr = conditionObject["operator"].as<String>();
             }
             if (conditionObject.containsKey("value")) {
                 condition->value = conditionObject["value"];
             }
 
             rule.conditions.push_back(std::move(condition));
-            Serial.println("Added condition to rule.conditions");
         }
 
         JsonArray actionsArray = ruleObject["actions"].as<JsonArray>();
-        Serial.println("Parsed actionsArray");
+
         for (JsonObject actionObject : actionsArray) {
             auto action = std::make_unique<Action>();
             if (actionObject.containsKey("device_id")) {
                 action->device_id = actionObject["device_id"].as<String>();
-                Serial.println("  Parsed Action Device ID: " +
-                               action->device_id);
             }
+
             if (actionObject.containsKey("property")) {
                 action->property = actionObject["property"].as<String>();
-                Serial.println("  Parsed Action Property: " + action->property);
             }
+
+            if (actionObject.containsKey("action_type")) {
+                action->action_type = actionObject["action_type"].as<String>();
+            }
+
             if (actionObject.containsKey("value")) {
                 action->value = actionObject["value"];
             }
 
             rule.actions.push_back(std::move(action));
-            Serial.println("Added action to rule.actions");
         }
 
         rules.push_back(std::move(rule));
-        Serial.println("Added rule to rules");
-
-        // Debug prints for rules
-        Serial.println("Rule ID: " + rule.id);
-        Serial.println("Rule Label: " + rule.label);
     }
 }
 
 void evaluateAndUpdate() {
-    // Update sensor states
-    for (Device& device : devices) {
-        for (const String& pinId : device.pins) {
-            auto pinIt = std::find_if(pins.begin(), pins.end(), [&](const Pin& p) {
-                return p.id == pinId;
-            });
+    unsigned long currentTime = millis();
 
-            if (pinIt != pins.end() && pinIt->mode == "INPUT") {
-                bool sensorValue = digitalRead(pinIt->gpio) == HIGH;
-                device.state["touched"].set(sensorValue);
-                Serial.println("Updated device " + device.id + " state: " + String(sensorValue));
-            }
-        }
-    }
-
-    // Evaluate rules
+    // Iterate through each rule
     for (Rule& rule : rules) {
         bool conditionsMet = true;
-        Serial.print("Evaluating Rule: " + rule.label);
+        bool sensorValueChanged = false;
+        bool sensorValue = false;
 
+        // Check each condition for the current rule
         for (const auto& condition : rule.conditions) {
-            auto deviceIt = std::find_if(devices.begin(), devices.end(), [&](const Device& d) {
-                return d.id == condition->device_id;
-            });
+            bool conditionMet = false;
+
+            // Find the device associated with the condition
+            auto deviceIt = std::find_if(
+                devices.begin(), devices.end(),
+                [&](const Device& d) { return d.id == condition->device_id; });
 
             if (deviceIt == devices.end()) {
-                Serial.println(" - Device not found: " + condition->device_id);
                 conditionsMet = false;
                 break;
             }
 
             Device& device = *deviceIt;
-            auto stateIt = device.state.find(condition->property);
-            if (stateIt == device.state.end()) {
-                Serial.println(" - Property not found: " + condition->property);
-                conditionsMet = false;
-                break;
-            }
 
-            bool conditionMet = false;
-            if (condition->operatorStr == "==") {
-                conditionMet = (stateIt->second == condition->value);
-            } else if (condition->operatorStr == "!=") {
-                conditionMet = (stateIt->second != condition->value);
-            } else if (condition->operatorStr == "<") {
-                conditionMet = (stateIt->second < condition->value);
-            } else if (condition->operatorStr == ">") {
-                conditionMet = (stateIt->second > condition->value);
-            } else if (condition->operatorStr == "<=") {
-                conditionMet = (stateIt->second <= condition->value);
-            } else if (condition->operatorStr == ">=") {
-                conditionMet = (stateIt->second >= condition->value);
+            // Find the pin associated with the condition
+            auto pinIt = std::find_if(pins.begin(), pins.end(), [&](const Pin& p) {
+                return std::find(device.pins.begin(), device.pins.end(),
+                                 p.id) != device.pins.end() &&
+                       p.mode == "INPUT";
+            });
+
+            if (pinIt != pins.end()) {
+                sensorValue = digitalRead(pinIt->gpio) == HIGH;
+
+                if (condition->value.is<bool>()) {
+                    // Handle boolean conditions
+                    if (condition->operatorStr == "==") {
+                        conditionMet = (sensorValue == condition->value.as<bool>());
+                    } else if (condition->operatorStr == "!=") {
+                        conditionMet = (sensorValue != condition->value.as<bool>());
+                    }
+                } else if (condition->value.is<int>()) {
+                    // Handle integer conditions
+                    int sensorValueInt = sensorValue ? 1 : 0;
+                    int conditionValue = condition->value.as<int>();
+
+                    if (condition->operatorStr == "==") {
+                        conditionMet = (sensorValueInt == conditionValue);
+                    } else if (condition->operatorStr == "!=") {
+                        conditionMet = (sensorValueInt != conditionValue);
+                    } else if (condition->operatorStr == ">") {
+                        conditionMet = (sensorValueInt > conditionValue);
+                    } else if (condition->operatorStr == "<") {
+                        conditionMet = (sensorValueInt < conditionValue);
+                    } else if (condition->operatorStr == ">=") {
+                        conditionMet = (sensorValueInt >= conditionValue);
+                    } else if (condition->operatorStr == "<=") {
+                        conditionMet = (sensorValueInt <= conditionValue);
+                    }
+                }
+
+                if (device.previousState != sensorValue) {
+                    sensorValueChanged = true;
+                }
+
+                if (!conditionMet) {
+                    conditionsMet = false;
+                    break;
+                }
             } else {
-                Serial.println(" - Unsupported operator: " + condition->operatorStr);
-            }
-
-            Serial.print(" - Condition: " + condition->device_id + "." + condition->property + " " + condition->operatorStr + " " + String(condition->value.as<bool>()));
-            Serial.println(conditionMet ? " - Met" : " - Not Met");
-
-            if (!conditionMet) {
                 conditionsMet = false;
                 break;
             }
         }
 
-        if (conditionsMet) {
-            Serial.println(" - Conditions met");
+        // Perform actions if all conditions are met and the sensor value changed
+        if (conditionsMet && sensorValueChanged) {
             for (const auto& action : rule.actions) {
-                auto deviceIt = std::find_if(devices.begin(), devices.end(), [&](const Device& d) {
-                    return d.id == action->device_id;
-                });
+                // Find the device associated with the action
+                auto deviceIt = std::find_if(
+                    devices.begin(), devices.end(),
+                    [&](const Device& d) { return d.id == action->device_id; });
 
                 if (deviceIt == devices.end()) {
-                    Serial.println(" - Action device not found: " + action->device_id);
                     continue;
                 }
 
                 Device& device = *deviceIt;
-                device.state[action->property].set(action->value);
 
-                Serial.println(" - Action: " + action->device_id + "." + action->property + " = " + String(action->value.as<bool>()));
+                // Check if the latency period has elapsed for the device
+                if (currentTime - device.lastRunTime < device.latency) {
+                    Serial.println("Ignored due to (device latency: " +
+                                   String(device.latency) +
+                                   ") and (device lastRunTime: " +
+                                   String(device.lastRunTime) + ")");
+                    continue;  // Skip this device and move on to the next one
+                }
 
+                // Find the pin associated with the action
                 auto pinIt = std::find_if(pins.begin(), pins.end(), [&](const Pin& p) {
-                    return std::find(device.pins.begin(), device.pins.end(), p.id) != device.pins.end();
+                    return std::find(device.pins.begin(), device.pins.end(),
+                                     p.id) != device.pins.end() &&
+                           p.mode == "OUTPUT";
                 });
 
-                if (pinIt != pins.end() && action->property == "status") {
-                    bool value = action->value.as<bool>();
-                    digitalWrite(pinIt->gpio, value ? HIGH : LOW);
-                    Serial.println(" - Setting GPIO " + String(pinIt->gpio) + " to " + String(value ? "HIGH" : "LOW"));
+                if (pinIt != pins.end()) {
+                    if (action->action_type == "toggle") {
+                        // Toggle the state only if the sensorValue has changed from false to true
+                        if (sensorValue && !device.previousState) {
+                            bool currentState = stateManager.getState(
+                                action->device_id, action->property);
+                            bool newState = !currentState;
+                            stateManager.setState(action->device_id,
+                                                  action->property, newState);
+                            digitalWrite(pinIt->gpio, newState ? HIGH : LOW);
+                        }
+                    } else if (action->action_type == "set") {
+                        // Set the state
+                        bool newState = action->value.as<bool>();
+                        stateManager.setState(action->device_id,
+                                              action->property, newState);
+                        digitalWrite(pinIt->gpio, newState ? HIGH : LOW);
+                    } else {
+                        // Handle other action types if needed
+                        Serial.println("Unknown action type: " +
+                                       action->action_type);
+                    }
+
+                    // Update lastRunTime for the device after performing the action
+                    device.lastRunTime = currentTime;
                 }
             }
-        } else {
-            Serial.println(" - Conditions not met");
+        }
+
+        // Update the device's previous state after evaluating all conditions
+        for (auto& device : devices) {
+            if (std::any_of(rule.conditions.begin(), rule.conditions.end(),
+                            [&](const std::unique_ptr<Condition>& condition) {
+                                return condition->device_id == device.id;
+                            })) {
+                device.previousState = sensorValue;
+            }
         }
     }
 }
