@@ -6,6 +6,8 @@
 #include <TaskDefinitions.h>
 #include <TaskManager.h>
 #include <TaskScheduler.h>
+#include <WiFiManagement.h>
+#include <ESP8266WebServer.h>
 
 #include <map>
 #include <memory>
@@ -88,8 +90,11 @@ DeviceInfoManager deviceInfoManager;
 ConfigManager configManager;
 StateManager stateManager(configManager);
 TaskManager taskManager(configManager, stateManager);
-// Tasks
 Scheduler runner;
+WiFiManager wifiManager;
+ESP8266WebServer server(80);
+
+// Tasks
 Task evaluateAndUpdateTask(
     5, TASK_FOREVER, []() { taskManager.evaluateAndUpdate(); }, &runner, true);
 
@@ -108,10 +113,36 @@ void setup() {
     // Setup device information
     deviceInfoManager.setupDeviceInfo();
 
+    // Setup WiFi
+    wifiManager.startAPMode();
+    wifiManager.begin();
+
     // Save and load json config
     const char* configPath = "/config.json";
     configManager.save(configPath, jsonConfig);
     configManager.populateFromFile(configPath);
+
+    MDNS.begin("myesp");
+    Serial.println("Address: http://myesp.local");
+
+    // Wifi Manager Routes
+    server.on("/", HTTP_GET, []() { wifiManager.handleRoot(&server); });
+    server.on("/scan", HTTP_GET, []() { wifiManager.handleScan(&server); });
+    server.on("/connect", HTTP_POST,
+              []() { wifiManager.handleConnect(&server); });
+    server.on("/status", HTTP_GET, []() { wifiManager.handleStatus(&server); });
+
+    // // Device Manager Routes
+    // server.on("/config", HTTP_POST,
+    //           []() { deviceManager.handleConfig(&server); });
+    // server.on("/control", HTTP_POST,
+    //           []() { deviceManager.handleControl(&server); });
+    // server.on("/devices", HTTP_GET,
+    //           []() { deviceManager.handleGetDevices(&server); });
+
+    // Start local web server
+    server.begin();
+    Serial.println("HTTP server started");
 
     // Start the task scheduler
     runner.startNow();
@@ -119,6 +150,8 @@ void setup() {
 
 void loop() {
     runner.execute();
+    MDNS.update();
+    server.handleClient();
 
     unsigned long currentMillis = millis();
 
@@ -126,6 +159,7 @@ void loop() {
         previousMillis = currentMillis;
 
         ledState = !ledState;  // Toggle the LED state
-        stateManager.setDeviceComponentState("led_switch_deviceComponent", ledState);
+        stateManager.setDeviceComponentState("led_switch_deviceComponent",
+                                             ledState);
     }
 }
