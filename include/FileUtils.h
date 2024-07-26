@@ -8,5 +8,6 @@
 bool writeFile(const char* path, const char* data);
 bool writeFileJson(const char* path, JsonObject& jsonObj);
 String readFile(const char* path);
+JsonDocument readJsonFile(const char* path);
 
 #endif

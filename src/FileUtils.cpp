@@ -70,3 +70,19 @@ String readFile(const char* path) {
 
     return content;
 }
+
+// Read data from a json file and return contents as a JsonDocument
+JsonDocument readJsonFile(const char* path) {
+    Serial.println("Loading json file from: " + String(path));
+
+    String file = readFile(path);
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, file);
+    if (error) {
+        Serial.println("Failed to read json file");
+        Serial.println(error.c_str());
+    }
+
+    return doc;
+}
