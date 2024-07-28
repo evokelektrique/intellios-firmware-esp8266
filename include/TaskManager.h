@@ -1,21 +1,30 @@
-#ifndef INTELLIOS_TASK_MANAGER
-#define INTELLIOS_TASK_MANAGER
+#ifndef TASK_MANAGER_H
+#define TASK_MANAGER_H
 
 #include <Arduino.h>
-#include <ConfigManager.h>
-#include <StateManager.h>
+#include <vector>
+#include <memory>
+#include <algorithm>
+#include <any>
+
+#include "ConfigManager.h"
+#include "StateManager.h"
 
 class TaskManager {
-    public:
-    TaskManager(ConfigManager& configManagerInstance,
-                StateManager& stateManagerInstance)
-        : configManager(configManagerInstance),
-          stateManager(stateManagerInstance) {};
+public:
+    TaskManager(ConfigManager& configManager, StateManager& stateManager)
+        : configManager(configManager), stateManager(stateManager) {}
+
     void evaluateAndUpdate();
 
-   private:
+private:
     ConfigManager& configManager;
     StateManager& stateManager;
+
+    bool evaluateCondition(const Condition& condition, const Device& device, const Pin& pin);
+    bool findDeviceAndPin(const String& deviceId, const String& pinMode, Device& outDevice, Pin& outPin);
+    void updatePreviousState(const Rule& rule, bool sensorValue);
+    void performAction(const Action& action, bool sensorValue, unsigned long currentTime);
 };
 
-#endif
+#endif // TASK_MANAGER_H

@@ -2,18 +2,14 @@
 #include <ArduinoJson.h>
 #include <ConfigManager.h>
 #include <DeviceInfoManager.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
 #include <StateManager.h>
 #include <TaskDefinitions.h>
 #include <TaskManager.h>
 #include <TaskScheduler.h>
 #include <WiFiManagement.h>
-#include <ESP8266WebServer.h>
 
-#include <map>
-#include <memory>
-#include <vector>
-
-// JSON configuration with version
 const char* jsonConfig = R"(
 {
   "version": "0.1",
@@ -41,7 +37,7 @@ const char* jsonConfig = R"(
       "state": {
         "status": false
       },
-      "latency": 150
+      "latency": 10
     },
     {
       "id": "touch_sensor",
@@ -55,16 +51,17 @@ const char* jsonConfig = R"(
   ],
   "components": [
     {
-        "id": "led_switch_deviceComponent",
-        "device_id": "led",
-        "property": "status",
-        "type": "switch"
+      "id": "led_switch_deviceComponent",
+      "device_id": "led",
+      "property": "status",
+      "type": "switch"
     }
   ],
   "rules": [
     {
       "id": "rule3",
       "label": "Touch Sensor to Toggle LED",
+      "triggerOnChange": true,
       "conditions": [
         {
           "device_id": "touch_sensor",
@@ -95,8 +92,16 @@ WiFiManager wifiManager;
 ESP8266WebServer server(80);
 
 // Tasks
+Task taskReconnectWiFi(
+    5000, TASK_FOREVER,
+    []() {
+        yield();
+        wifiManager.reconnectWiFi();
+    },
+    &runner);
+
 Task evaluateAndUpdateTask(
-    5, TASK_FOREVER, []() { taskManager.evaluateAndUpdate(); }, &runner, true);
+    1, TASK_FOREVER, []() { taskManager.evaluateAndUpdate(); }, &runner, true);
 
 bool ledState = false;
 unsigned long previousMillis = 0;
@@ -113,17 +118,13 @@ void setup() {
     // Setup device information
     deviceInfoManager.setupDeviceInfo();
 
-    // Setup WiFi
-    wifiManager.startAPMode();
-    wifiManager.begin();
-
     // Save and load json config
     const char* configPath = "/config.json";
     configManager.save(configPath, jsonConfig);
     configManager.populateFromFile(configPath);
 
-    MDNS.begin("myesp");
-    Serial.println("Address: http://myesp.local");
+    // Start the task scheduler
+    runner.startNow();
 
     // Wifi Manager Routes
     server.on("/", HTTP_GET, []() { wifiManager.handleRoot(&server); });
@@ -132,34 +133,29 @@ void setup() {
               []() { wifiManager.handleConnect(&server); });
     server.on("/status", HTTP_GET, []() { wifiManager.handleStatus(&server); });
 
-    // // Device Manager Routes
-    // server.on("/config", HTTP_POST,
-    //           []() { deviceManager.handleConfig(&server); });
-    // server.on("/control", HTTP_POST,
-    //           []() { deviceManager.handleControl(&server); });
-    // server.on("/devices", HTTP_GET,
-    //           []() { deviceManager.handleGetDevices(&server); });
+    // Setup WiFi
+    wifiManager.startAPMode();
+    wifiManager.begin();
+    MDNS.begin("myesp");
+    Serial.println("Address: http://myesp.local");
 
-    // Start local web server
+    Serial.println("Starting HTTP server");
     server.begin();
     Serial.println("HTTP server started");
-
-    // Start the task scheduler
-    runner.startNow();
 }
 
 void loop() {
-    runner.execute();
     MDNS.update();
     server.handleClient();
+    runner.execute();
 
-    unsigned long currentMillis = millis();
+    // unsigned long currentMillis = millis();
 
-    if (currentMillis - previousMillis >= interval) {
-        previousMillis = currentMillis;
+    // if (currentMillis - previousMillis >= interval) {
+    //     previousMillis = currentMillis;
 
-        ledState = !ledState;  // Toggle the LED state
-        stateManager.setDeviceComponentState("led_switch_deviceComponent",
-                                             ledState);
-    }
+    //     ledState = !ledState;  // Toggle the LED state
+    //     stateManager.setDeviceComponentState("led_switch_deviceComponent",
+    //                                          ledState);
+    // }
 }

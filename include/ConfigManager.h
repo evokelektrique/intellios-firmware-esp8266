@@ -1,11 +1,13 @@
 #ifndef INTELLIOS_CONFIG_MANAGER
 #define INTELLIOS_CONFIG_MANAGER
 
+#include <ArduinoJson.h>
+
+#include <any>
 #include <map>
 #include <memory>
 
 #include "Arduino.h"
-#include "ArduinoJson.h"
 #include "FileUtils.h"
 
 struct Pin {
@@ -37,19 +39,21 @@ struct Condition {
     String device_id;
     String property;
     String operatorStr;
-    JsonVariant value;
+    std::any value;
 };
 
 struct Action {
     String device_id;
     String property;
     String action_type;
-    JsonVariant value;
+    std::any value;
 };
 
 struct Rule {
     String id;
     String label;
+    bool triggerOnChange;  // New attribute to specify if actions should be
+                           // triggered only on state change
     std::vector<std::unique_ptr<Condition>> conditions;
     std::vector<std::unique_ptr<Action>> actions;
 };

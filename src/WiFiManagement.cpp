@@ -154,6 +154,9 @@ void WiFiManager::reconnectWiFi() {
         } else if (reconnectCounter < maxReconnectAttempts) {
             reconnectCounter++;
             Serial.println("Reconnecting to WiFi...");
+
+            // Call yield to allow other tasks to run
+            yield();
         } else {
             Serial.println("Failed to reconnect to WiFi");
             reconnecting = false;
@@ -162,6 +165,8 @@ void WiFiManager::reconnectWiFi() {
 }
 
 void WiFiManager::begin() {
+    yield(); // maybe?
+
     String ssid, password;
     if (loadWiFiCredentials(ssid, password)) {
         WiFi.begin(ssid.c_str(), password.c_str());
