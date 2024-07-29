@@ -133,6 +133,47 @@ void setup() {
               []() { wifiManager.handleConnect(&server); });
     server.on("/status", HTTP_GET, []() { wifiManager.handleStatus(&server); });
 
+    // State manager - Setter
+    server.on("/state/set", HTTP_POST, []() {
+        if (server.hasArg("deviceComponentId") && server.hasArg("newState")) {
+            String deviceComponentId = server.arg("deviceComponentId");
+            String newState = server.arg("newState");
+
+            bool state = (newState == "true" || newState == "1");
+
+            JsonDocument doc;
+            doc["deviceComponentId"] = deviceComponentId;
+            doc["state"] = state;
+
+            stateManager.setDeviceComponentState(deviceComponentId, state);
+
+            server.send(200, "application/json", doc);
+        } else {
+            server.send(400, "text/plain", "Bad Request");
+        }
+    });
+
+    // State manager - Getter
+    server.on("/state/get", HTTP_GET, []() {
+        if (server.hasArg("deviceComponentId")) {
+            String deviceComponentId = server.arg("deviceComponentId");
+
+            JsonDocument doc;
+
+            bool state =
+                stateManager.getDeviceComponentState(deviceComponentId);
+            doc["deviceComponentId"] = deviceComponentId;
+            doc["state"] = state;
+
+            String response;
+            serializeJson(doc, response);
+
+            server.send(200, "application/json", response);
+        } else {
+            server.send(400, "text/plain", "Bad Request");
+        }
+    });
+
     // Setup WiFi
     wifiManager.startAPMode();
     wifiManager.begin();
@@ -149,13 +190,13 @@ void loop() {
     server.handleClient();
     runner.execute();
 
-    // unsigned long currentMillis = millis();
+    unsigned long currentMillis = millis();
 
-    // if (currentMillis - previousMillis >= interval) {
-    //     previousMillis = currentMillis;
+    if (currentMillis - previousMillis >= interval) {
+        previousMillis = currentMillis;
 
-    //     ledState = !ledState;  // Toggle the LED state
-    //     stateManager.setDeviceComponentState("led_switch_deviceComponent",
-    //                                          ledState);
-    // }
+        ledState = !ledState;  // Toggle the LED state
+        stateManager.setDeviceComponentState("led_switch_deviceComponent",
+                                             ledState);
+    }
 }
