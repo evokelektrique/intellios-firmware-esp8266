@@ -50,14 +50,6 @@ void ConfigManager::setupPins(JsonArray& pinsArray) {
         pins.push_back(pin);
 
         pinMode(pin.gpio, pin.mode == "OUTPUT" ? OUTPUT : INPUT);
-
-        // // Print pin details
-        // Serial.println("Pin ID: " + pin.id);
-        // Serial.println("Label: " + pin.label);
-        // Serial.println("Type: " + pin.type);
-        // Serial.println("GPIO: " + String(pin.gpio));
-        // Serial.println("Mode: " + pin.mode);
-        // Serial.println();
     }
 }
 

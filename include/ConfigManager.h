@@ -28,6 +28,7 @@ struct Device {
     bool previousState;
 };
 
+// Used for mobile/web application
 struct DeviceComponent {
     String id;
     String device_id;
