@@ -5,9 +5,9 @@ ConfigManager::ConfigManager() {}
 void ConfigManager::populateFromFile(const char* path) {
     JsonDocument doc = readJsonFile(path);
 
-    // Serial.println("Config File Content:");
-    // serializeJson(doc, Serial);
-    // Serial.println();
+    Serial.println("Config File Content:");
+    serializeJson(doc, Serial);
+    Serial.println();
 
     JsonArray pinsArray = doc["pins"].as<JsonArray>();
     JsonArray devicesArray = doc["devices"].as<JsonArray>();
@@ -39,6 +39,8 @@ bool ConfigManager::save(const char* path, const char* data) {
 }
 
 void ConfigManager::setupPins(JsonArray& pinsArray) {
+    pins.clear();
+
     for (JsonObject pinObject : pinsArray) {
         Pin pin;
         pin.id = pinObject["id"].as<String>();
@@ -54,6 +56,8 @@ void ConfigManager::setupPins(JsonArray& pinsArray) {
 }
 
 void ConfigManager::setupDevices(JsonArray& devicesArray) {
+    devices.clear();
+
     for (JsonObject deviceObject : devicesArray) {
         Device device;
         device.id = deviceObject["id"].as<String>();
@@ -75,13 +79,15 @@ void ConfigManager::setupDevices(JsonArray& devicesArray) {
 
         devices.push_back(device);
 
-        // Serial.println("Device ID: " + device.id);
-        // Serial.println("Label: " + device.label);
-        // Serial.println("Latency: " + String(device.latency));
+        Serial.println("Device ID: " + device.id);
+        Serial.println("Label: " + device.label);
+        Serial.println("Latency: " + String(device.latency));
     }
 }
 
 void ConfigManager::setupDeviceComponents(JsonArray& componentsArray) {
+    deviceComponents.clear();
+
     for (JsonObject deviceComponentObject : componentsArray) {
         DeviceComponent deviceComponent;
         deviceComponent.id = deviceComponentObject["id"].as<String>();
@@ -93,16 +99,18 @@ void ConfigManager::setupDeviceComponents(JsonArray& componentsArray) {
 
         deviceComponents.push_back(deviceComponent);
 
-        // // Print deviceComponent details
-        // Serial.println("DeviceComponent ID: " + deviceComponent.id);
-        // Serial.println("Device ID: " + deviceComponent.device_id);
-        // Serial.println("Property: " + deviceComponent.property);
-        // Serial.println("Type: " + deviceComponent.type);
-        // Serial.println();
+        // Print deviceComponent details
+        Serial.println("DeviceComponent ID: " + deviceComponent.id);
+        Serial.println("Device ID: " + deviceComponent.device_id);
+        Serial.println("Property: " + deviceComponent.property);
+        Serial.println("Type: " + deviceComponent.type);
+        Serial.println();
     }
 }
 
 void ConfigManager::setupRules(JsonArray& rulesArray) {
+    rules.clear();
+
     for (JsonObject ruleObject : rulesArray) {
         Rule rule;
         rule.id = ruleObject["id"].as<String>();

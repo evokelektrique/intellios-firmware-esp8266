@@ -1,8 +1,9 @@
 #include <StateManager.h>
 
 void StateManager::setState(const String& deviceId, const String& property,
-                            bool value) {
+                            bool value, Pin& pin) {
     states[deviceId][property] = value;
+    digitalWrite(pin->gpio, value ? HIGH : LOW);
 }
 
 bool StateManager::getState(const String& deviceId,

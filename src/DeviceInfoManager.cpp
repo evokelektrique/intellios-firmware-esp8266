@@ -1,6 +1,8 @@
 #include "DeviceInfoManager.h"
 
-DeviceInfoManager::DeviceInfoManager() {}
+DeviceInfoManager::DeviceInfoManager() {
+    this->setupDeviceInfo();
+}
 
 void DeviceInfoManager::setupDeviceInfo() {
     deviceInfo.version = FIRMWARE_VERSION;

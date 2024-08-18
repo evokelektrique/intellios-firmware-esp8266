@@ -26,16 +26,16 @@ bool writeFileJson(const char* path, JsonObject& jsonObj) {
 
 // Write data to a file
 bool writeFile(const char* path, const char* data) {
-    // Open the file for writing
     File file = LittleFS.open(path, "w");
     if (!file) {
         Serial.println("Failed to open file for writing");
         return false;
     }
 
-    // Write data to the file
     if (file.print(data)) {
+        file.flush(); // Ensure all data is written
         file.close();
+        Serial.println("File written successfully");
         return true;
     } else {
         Serial.println("Failed to write to file");
@@ -82,6 +82,7 @@ JsonDocument readJsonFile(const char* path) {
     if (error) {
         Serial.println("Failed to read json file");
         Serial.println(error.c_str());
+        // Need error handling here
     }
 
     return doc;

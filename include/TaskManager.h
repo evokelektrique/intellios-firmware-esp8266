@@ -2,29 +2,32 @@
 #define TASK_MANAGER_H
 
 #include <Arduino.h>
-#include <vector>
-#include <memory>
+
 #include <algorithm>
 #include <any>
+#include <memory>
+#include <vector>
 
 #include "ConfigManager.h"
 #include "StateManager.h"
 
 class TaskManager {
-public:
+   public:
     TaskManager(ConfigManager& configManager, StateManager& stateManager)
         : configManager(configManager), stateManager(stateManager) {}
 
     void evaluateAndUpdate();
 
-private:
+   private:
     ConfigManager& configManager;
     StateManager& stateManager;
 
-    bool evaluateCondition(const Condition& condition, const Device& device, const Pin& pin);
-    bool findDeviceAndPin(const String& deviceId, const String& pinMode, Device& outDevice, Pin& outPin);
-    void updatePreviousState(const Rule& rule, bool sensorValue);
-    void performAction(const Action& action, bool sensorValue, unsigned long currentTime);
+    bool evaluateCondition(const Condition& condition, const Device& device,
+                           const Pin& pin);
+    bool findDeviceAndPin(const String& deviceId, const String& pinMode,
+                          Device& outDevice, Pin& outPin);
+    void updatePreviousState(const Rule& rule, bool value);
+    void performAction(const Action& action, unsigned long currentTime);
 };
 
-#endif // TASK_MANAGER_H
+#endif  // TASK_MANAGER_H

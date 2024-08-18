@@ -11,7 +11,7 @@ class StateManager {
    public:
     StateManager(ConfigManager& configManagerInstance)
         : configManager(configManagerInstance) {};
-    void setState(const String& deviceId, const String& property, bool value);
+    void setState(const String& deviceId, const String& property, bool value, Pin pin);
     bool getState(const String& deviceId, const String& property) const;
 
     void setDeviceComponentState(const String& deviceComponentId,

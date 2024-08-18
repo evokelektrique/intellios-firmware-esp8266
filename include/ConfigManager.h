@@ -14,7 +14,7 @@ struct Pin {
     String id;
     String label;
     String type;
-    int gpio;
+    uint8_t gpio;
     String mode;
 };
 

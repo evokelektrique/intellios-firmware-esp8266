@@ -5,10 +5,12 @@ curl http://myesp.local
 curl http://myesp.local/scan
 
 # Connect
-curl -X POST http://myesp.local/connect -d "ssid=home_wifi&password=home_wifi_123"
+curl -X POST http://myesp.local/wifi/connect -d "ssid=home_wifi&pass=home_wifi_123"
 
 # Status
-curl http://myesp.local/status
+curl http://myesp.local/wifi/status
+
+/wifi/update_ap_password
 
 # Config
 # curl -X POST http://myesp.local/config -H "Content-Type: application/json" -d '{
@@ -37,24 +39,92 @@ curl http://myesp.local/status
 #     }
 #   ]
 # }'
-curl -X POST http://myesp.local/config -H "Content-Type: application/json" -d '{
+
+# curl -X POST http://myesp.local/config -H "Content-Type: application/json" -d '{
+#   "components": [
+#     {
+#       "name": "ToggleComponent",
+#       "inputPins": [5],
+#       "outputPins": [4],
+#       "conditions": [
+#         "if readDigital D2 = on check_previous then toggle pin D1"
+#       ]
+#     }
+#   ]
+# }'
+
+curl -X PUT -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode 'config={
+  "version": "0.1",
+  "pins": [
+    {
+      "id": "pin1",
+      "label": "D1",
+      "type": "digital",
+      "gpio": 5,
+      "mode": "OUTPUT"
+    },
+    {
+      "id": "pin2",
+      "label": "D2",
+      "type": "digital",
+      "gpio": 4,
+      "mode": "INPUT"
+    }
+  ],
+  "devices": [
+    {
+      "id": "led",
+      "label": "LED",
+      "pins": ["pin1"],
+      "state": {
+        "status": true
+      },
+      "latency": 0
+    },
+    {
+      "id": "touch_sensor",
+      "label": "Touch Sensor",
+      "pins": ["pin2"],
+      "state": {
+        "touched": false
+      },
+      "latency": 0
+    }
+  ],
   "components": [
     {
-      "name": "ToggleComponent",
-      "inputPins": [5],
-      "outputPins": [4],
+      "id": "led_switch_deviceComponent",
+      "device_id": "led",
+      "property": "status",
+      "type": "switch"
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule3",
+      "label": "Touch Sensor to Toggle LED",
+      "triggerOnChange": true,
       "conditions": [
-        "if readDigital D2 = on check_previous then toggle pin D1"
+        {
+          "device_id": "touch_sensor",
+          "property": "touched",
+          "operator": "==",
+          "value": true
+        }
+      ],
+      "actions": [
+        {
+          "device_id": "led",
+          "property": "status",
+          "action_type": "toggle",
+          "value": true
+        }
       ]
     }
-  ]
-}'
+  ],
+}' "http://myesp.local/config/update"
 
 
 # Control
-curl -X POST http://myesp.local/control -H "Content-Type: application/json" -d '{
-  "name": "sensor_led_touch",
-  "index": "0",
-  "state": true
-}'
+curl -X POST http://myesp.local/state/set -d 'deviceComponentId=led_switch_deviceComponent&newState=true'
 

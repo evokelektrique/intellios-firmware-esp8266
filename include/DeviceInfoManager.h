@@ -15,8 +15,6 @@ class DeviceInfoManager {
    public:
     DeviceInfoManager();
     void setupDeviceInfo();
-
-   private:
     DeviceInfo deviceInfo;
 };
 
